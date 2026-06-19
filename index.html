@@ -15,10 +15,58 @@
         .screen { display: none; }
         .screen.active { display: block; }
         .card { border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .kid-btn { margin: 5px; font-size: 1.2rem; border-radius: 20px; }
-        .action-hint { font-size: 1.5rem; color: #d63384; font-weight: bold; background: #ffe6f2; padding: 10px; border-radius: 10px;}
-        .encourage-text { font-size: 1.2rem; color: #198754; font-weight: bold; }
+        
+        /* 隱藏答案的遮罩設計 */
+        .spoiler-container {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #ffe6f2;
+            min-height: 80px;
+        }
+        .spoiler-content {
+            padding: 15px;
+            font-size: 1.5rem;
+            color: #d63384;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .spoiler-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ff99cc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 10px;
+            transition: opacity 0.3s ease;
+            cursor: help;
+        }
+        .spoiler-overlay::before {
+            content: "❓";
+            font-size: 1.5rem;
+            margin-right: 8px;
+            background: white;
+            border-radius: 50%;
+            padding: 2px;
+        }
+        .spoiler-container:hover .spoiler-content { opacity: 1; }
+        .spoiler-container:hover .spoiler-overlay { opacity: 0; pointer-events: none; }
+
         #canvas-container { max-width: 600px; margin: 0 auto; }
+        .question-badge { font-size: 1.5rem; padding: 10px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .conclusion-box { background-color: #fff9e6; border-left: 6px solid #ffc107; border-radius: 10px; }
+        
+        /* 統計區塊樣式 */
+        .stats-box { background-color: #f8f9fa; border-radius: 10px; padding: 10px; display: inline-block; }
     </style>
 </head>
 <body>
@@ -29,187 +77,226 @@
     <!-- 畫面 1：設定參加名單 -->
     <div id="screen-setup" class="screen active card p-4">
         <h3 class="text-center mb-3">請勾選今天有來參加的小朋友</h3>
-        <div id="kids-checkboxes" class="d-flex flex-wrap justify-content-center mb-4">
-            <!-- 動態生成 -->
-        </div>
-        <div class="text-center">
-            <button class="btn btn-primary btn-lg" onclick="startGame()">開始遊戲 🚀</button>
-        </div>
-    </div>
-
-    <!-- 畫面 2：選擇下一位答題的小朋友 -->
-    <div id="screen-select-kid" class="screen card p-4">
-        <h3 class="text-center mb-3">請選擇下一位挑戰者</h3>
-        <div id="remaining-kids" class="d-flex flex-wrap justify-content-center mb-4">
-            <!-- 動態生成 -->
-        </div>
-        <div class="text-center">
-            <button class="btn btn-secondary" onclick="showDashboard(false)">查看目前儀表板 📊</button>
-        </div>
-    </div>
-
-    <!-- 畫面 3：遊戲進行中 -->
-    <div id="screen-game" class="screen card p-4 text-center">
-        <h2 id="current-kid-name" class="text-success mb-3">小朋友名字</h2>
-        <h5 class="text-muted">第 <span id="q-current">1</span> / 5 題</h5>
         
-        <div class="my-4">
-            <h3 id="question-text" class="mb-4">題目內容</h3>
-            <div class="action-hint">
-                <span id="correct-action">動作提示</span>
+        <div class="row justify-content-center mb-4">
+            <div class="col-md-6 col-sm-10">
+                <div class="input-group">
+                    <input type="text" id="new-kid-name" class="form-control" placeholder="輸入其他小朋友名字...">
+                    <button class="btn btn-outline-success" type="button" onclick="addKid()">➕ 新增</button>
+                </div>
             </div>
         </div>
 
-        <div class="mt-4">
-            <p class="text-muted">服事者請點選：小朋友做對了嗎？</p>
-            <button class="btn btn-success btn-lg mx-2" onclick="answer(true)">✅ 做對了</button>
-            <button class="btn btn-danger btn-lg mx-2" onclick="answer(false)">❌ 做錯了</button>
+        <div id="kids-checkboxes" class="d-flex flex-wrap justify-content-center mb-4">
+            <!-- 動態生成核取方塊 -->
+        </div>
+        <div class="text-center">
+            <button class="btn btn-primary btn-lg px-5 shadow" onclick="startGame()">開始遊戲 🚀</button>
         </div>
     </div>
 
-    <!-- 畫面 4：動態儀表板 -->
+    <!-- 畫面 2：遊戲進行中 -->
+    <div id="screen-game" class="screen card p-4 text-center">
+        <h2 id="current-kid-name" class="text-success mb-3 fw-bold">小朋友名字</h2>
+        
+        <!-- 當前答題統計 -->
+        <div class="stats-box shadow-sm mb-4 fs-5 fw-bold text-secondary">
+            ✅ 答對：<span id="current-correct-count" class="text-success fs-4">0</span> 題 
+            &nbsp;&nbsp;|&nbsp;&nbsp; 
+            ❌ 答錯：<span id="current-incorrect-count" class="text-danger fs-4">0</span> 題
+        </div>
+        <br>
+        
+        <!-- 題號 -->
+        <div class="mb-4">
+            <span class="badge bg-warning text-dark question-badge rounded-pill border border-warning">
+                第 <span id="q-current" class="fs-3 text-danger">1</span> / 5 題
+            </span>
+        </div>
+        
+        <div class="my-4">
+            <h2 id="question-text" class="mb-4 text-dark fw-bold" style="line-height: 1.5;">題目內容</h2>
+            
+            <div class="spoiler-container shadow-sm mt-3">
+                <div class="spoiler-overlay">服事者請將滑鼠移入查看答案</div>
+                <div id="correct-action" class="spoiler-content">動作提示</div>
+            </div>
+        </div>
+
+        <div class="mt-5">
+            <p class="text-muted fs-5 mb-3">👇 服事者請點選：小朋友做對了嗎？</p>
+            <button class="btn btn-success btn-lg mx-2 px-4 py-2 fs-4 shadow" onclick="answer(true)">✅ 做對了</button>
+            <button class="btn btn-danger btn-lg mx-2 px-4 py-2 fs-4 shadow" onclick="answer(false)">❌ 做錯了</button>
+        </div>
+    </div>
+
+    <!-- 畫面 3：動態儀表板 -->
     <div id="screen-dashboard" class="screen card p-4">
         <h2 class="text-center text-primary mb-3">📊 戰況儀表板</h2>
         <div id="canvas-container">
             <canvas id="scoreChart"></canvas>
         </div>
-        <div class="text-center mt-4" id="dashboard-actions">
+        <div class="text-center mt-5" id="dashboard-actions">
             <!-- 動態生成按鈕 -->
         </div>
     </div>
 
-    <!-- 畫面 5：最終排名 -->
+    <!-- 畫面 4：最終排名 -->
     <div id="screen-final" class="screen card p-4">
         <h2 class="text-center text-danger mb-4">🏆 最終排名與頒獎 🏆</h2>
         <div id="ranking-list" class="list-group mb-4" style="max-width: 400px; margin: 0 auto;">
             <!-- 動態生成 -->
         </div>
+        
+        <div class="text-center mt-4">
+            <!-- 點擊進入獨立的結語畫面 -->
+            <button class="btn btn-success btn-lg shadow px-5" onclick="showScreen('screen-conclusion')">➡️ 下一步：活動結語</button>
+        </div>
+    </div>
+
+    <!-- 畫面 5：獨立的結語畫面 -->
+    <div id="screen-conclusion" class="screen card p-4">
+        <h2 class="text-center text-primary mb-4">📖 服事者的話</h2>
+        
+        <div class="conclusion-box p-4 mb-5 shadow-sm mx-auto" style="max-width: 650px; line-height: 1.8;">
+            <h4 class="text-center text-success fw-bold mb-3">為什麼要玩「口是心非」呢？</h4>
+            <p class="fs-4 mb-3 text-dark">
+                小朋友們，剛剛在遊戲中，明明答案是對的，嘴巴要說「對」卻要「搖頭」，是不是覺得卡卡的、很不舒服呢？這就是<strong>「口是心非」</strong>的感覺！
+            </p>
+            <p class="fs-4 mb-0 text-dark">
+                芳羽的故事提醒我們，主耶穌喜歡我們作一個<strong>內裡真實</strong>的人。禱告的時候不需要作文章，也不要向主隱瞞什麼。不論你是開心、難過、甚至是生氣，都要<strong>向主耶穌真實敞開</strong>，把心裡真正的感覺告訴祂，這才是最好的禱告喔！💖
+            </p>
+        </div>
+
         <div class="text-center">
-            <h4 class="text-success mb-3">感謝主！大家都非常棒，都是操練真實敞開的好孩子！</h4>
-            <button class="btn btn-primary" onclick="location.reload()">重新開始遊戲</button>
+            <button class="btn btn-secondary btn-lg shadow px-5" onclick="location.reload()">🔄 重新開始遊戲</button>
         </div>
     </div>
 
 </div>
 
 <script>
-    // --- 資料設定 ---
-    const allKids = ["知愛", "沛馨", "坤穎", "坤翰", "鉉忠", "芊妤", "牧謙", "筠縢", "嘉晨"];
+    let allKids = ["知愛", "沛馨", "坤穎", "坤翰", "鉉忠", "芊妤", "牧謙", "筠縢", "嘉晨", "宇恩"];
     const encouragements = [
         "太棒了！主耶穌愛你！", "做得很好！要繼續操練靈喔！", "沒關係，我們再試一次！", 
         "好厲害！你真是一個真實的人！", "很棒喔！記得把一切告訴主耶穌！", "讚！清心的人有福了！",
         "真棒！主耶穌就在你裡面！", "神是又真又活的神，你也是又棒又乖的孩子！"
     ];
 
-    // 50個題目 (結合生活常識與文件內容，O為true，X為false)
     const questionBank = [
-        // 生活與常識
-        { text: "天空通常是藍色的。", ans: true },
-        { text: "蘋果吃起來全部都是苦的。", ans: false },
-        { text: "小狗會汪汪叫。", ans: true },
-        { text: "貓咪會發出哞哞的牛叫聲。", ans: false },
-        { text: "冰塊摸起來是熱的。", ans: false },
-        { text: "太陽是從東邊升起的。", ans: true },
-        { text: "魚是在土裡游泳的。", ans: false },
-        { text: "鳥兒可以在天上飛。", ans: true },
-        // 關於真與神
-        { text: "真實就是真理、真誠、信實。", ans: true },
-        { text: "撒但是說謊之人的父。", ans: true },
-        { text: "真的人就是被神充滿、表裡一致的人。", ans: true },
-        { text: "撒但是誠實之人的父。", ans: false },
-        { text: "神是又活又真的神。", ans: true },
-        { text: "清心的人必看不見神。", ans: false },
-        { text: "聖經說：清心的人有福了。", ans: true },
-        // 關於接觸神與禱告
-        { text: "基督是活的救主和那靈。", ans: true },
-        { text: "我們要用『頭腦』來接觸神，不用操練靈。", ans: false },
-        { text: "禱告就像小孩子來到母親那裡一樣簡單。", ans: true },
-        { text: "禱告一定要作很長、很複雜的文章。", ans: false },
-        { text: "主耶穌是聽禱告的神。", ans: true },
-        { text: "我們可以把難處和憂傷告訴主耶穌。", ans: true },
-        { text: "只有開心的時候才可以跟主耶穌說話。", ans: false },
-        { text: "如果我們做錯事，可以向主耶穌認罪。", ans: true },
-        { text: "我們想去看電影，不需要告訴主耶穌。", ans: false },
-        { text: "在禱告時向主真實敞開，是最好的禱告。", ans: true },
-        // 關於芳羽的故事 (文件內容)
-        { text: "芳羽的腦幹長了腫瘤。", ans: true },
-        { text: "芳羽生病時，弟兄姊妹會來她家陪她唱詩禱告。", ans: true },
-        { text: "芳羽在醫院開刀時，沒有人幫她禱告。", ans: false },
-        { text: "芳羽最喜歡做的事是寫『鼓勵本』。", ans: true },
-        { text: "芳羽覺得去兒童排聚會很無聊。", ans: false },
-        { text: "鼓勵本就像芳羽跟主耶穌的交換日記。", ans: true },
-        { text: "芳羽的鼓勵本裡面只有畫畫，沒有寫字。", ans: false },
-        { text: "芳羽睡醒時會跟姑姑說「主耶穌愛你」。", ans: true },
-        { text: "芳羽上英語課前，不敢跟老師一起呼求主名。", ans: false },
-        { text: "芳羽輸血覺得痛的時候，會呼求主名。", ans: true },
-        { text: "芳羽輸血時因為很痛，就放棄了禱告。", ans: false },
-        { text: "芳羽生氣打人之後，有向主耶穌認罪。", ans: true },
-        { text: "芳羽生氣打人之後，覺得自己一點錯都沒有。", ans: false },
-        { text: "芳羽生病時還不斷寫卡片傳揚福音。", ans: true },
-        { text: "芳羽生病的時候從來不禱告。", ans: false },
-        { text: "芳羽最後一句話是「主耶穌，我愛祢」。", ans: true },
-        { text: "芳羽的故事告訴我們，有事要對主耶穌隱瞞。", ans: false },
-        { text: "芳羽在化療期間，還是很期待參加兒童排。", ans: true },
-        { text: "藉著呼求禱告，芳羽經歷主減輕她的痛苦。", ans: true },
-        { text: "芳羽在世上活了八十歲才安睡在主懷裡。", ans: false },
-        // 延伸操練
-        { text: "喜怒哀樂都可以真實地告訴主耶穌。", ans: true },
-        { text: "恨別人的時候，絕對不能跟主耶穌說。", ans: false },
-        { text: "只要與神說話，祂會幫助我們放下仇恨。", ans: true },
-        { text: "主耶穌就住在我們最深處的靈裡。", ans: true },
-        { text: "學習向基督說話，不要向祂隱瞞什麼。", ans: true }
+        { text: "天空通常是藍色的。", ans: true }, { text: "蘋果吃起來全部都是苦的。", ans: false },
+        { text: "小狗會汪汪叫。", ans: true }, { text: "貓咪會發出哞哞的牛叫聲。", ans: false },
+        { text: "冰塊摸起來是熱的。", ans: false }, { text: "太陽是從東邊升起的。", ans: true },
+        { text: "魚是在土裡游泳的。", ans: false }, { text: "鳥兒可以在天上飛。", ans: true },
+        { text: "真實就是真理、真誠、信實。", ans: true }, { text: "撒但是說謊之人的父。", ans: true },
+        { text: "真的人就是被神充滿、表裡一致的人。", ans: true }, { text: "撒但是誠實之人的父。", ans: false },
+        { text: "神是又活又真的神。", ans: true }, { text: "清心的人必看不見神。", ans: false },
+        { text: "聖經說：清心的人有福了。", ans: true }, { text: "基督是活的救主和那靈。", ans: true },
+        { text: "我們要用『頭腦』來接觸神，不用操練靈。", ans: false }, { text: "禱告就像小孩子來到母親那裡一樣簡單。", ans: true },
+        { text: "禱告一定要作很長、很複雜的文章。", ans: false }, { text: "主耶穌是聽禱告的神。", ans: true },
+        { text: "我們可以把難處和憂傷告訴主耶穌。", ans: true }, { text: "只有開心的時候才可以跟主耶穌說話。", ans: false },
+        { text: "如果我們做錯事，可以向主耶穌認罪。", ans: true }, { text: "我們想去看電影，不需要告訴主耶穌。", ans: false },
+        { text: "在禱告時向主真實敞開，是最好的禱告。", ans: true }, { text: "芳羽的腦幹長了腫瘤。", ans: true },
+        { text: "芳羽生病時，弟兄姊妹會來她家陪她唱詩禱告。", ans: true }, { text: "芳羽在醫院開刀時，沒有人幫她禱告。", ans: false },
+        { text: "芳羽最喜歡做的事是寫『鼓勵本』。", ans: true }, { text: "芳羽覺得去兒童排聚會很無聊。", ans: false },
+        { text: "鼓勵本就像芳羽跟主耶穌的交換日記。", ans: true }, { text: "芳羽的鼓勵本裡面只有畫畫，沒有寫字。", ans: false },
+        { text: "芳羽睡醒時會跟姑姑說「主耶穌愛你」。", ans: true }, { text: "芳羽上英語課前，不敢跟老師一起呼求主名。", ans: false },
+        { text: "芳羽輸血覺得痛的時候，會呼求主名。", ans: true }, { text: "芳羽輸血時因為很痛，就放棄了禱告。", ans: false },
+        { text: "芳羽生氣打人之後，有向主耶穌認罪。", ans: true }, { text: "芳羽生氣打人之後，覺得自己一點錯都沒有。", ans: false },
+        { text: "芳羽生病時還不斷寫卡片傳揚福音。", ans: true }, { text: "芳羽生病的時候從來不禱告。", ans: false },
+        { text: "芳羽最後一句話是「主耶穌，我愛祢」。", ans: true }, { text: "芳羽的故事告訴我們，有事要對主耶穌隱瞞。", ans: false },
+        { text: "芳羽在化療期間，還是很期待參加兒童排。", ans: true }, { text: "藉著呼求禱告，芳羽經歷主減輕她的痛苦。", ans: true },
+        { text: "芳羽在世上活了八十歲才安睡在主懷裡。", ans: false }, { text: "喜怒哀樂都可以真實地告訴主耶穌。", ans: true },
+        { text: "恨別人的時候，絕對不能跟主耶穌說。", ans: false }, { text: "只要與神說話，祂會幫助我們放下仇恨。", ans: true },
+        { text: "主耶穌就住在我們最深處的靈裡。", ans: true }, { text: "學習向基督說話，不要向祂隱瞞什麼。", ans: true }
     ];
 
-    // --- 狀態變數 ---
     let activeKids = [];
     let playedKids = [];
     let scores = {};
     let currentKid = "";
     let currentQuestions = [];
     let qIndex = 0;
+    
+    // 新增：記錄當前這回合的對錯題數
+    let currentCorrectCount = 0;
+    let currentIncorrectCount = 0;
+    
     let chartInstance = null;
 
-    // --- 初始化 ---
-    window.onload = () => {
+    window.onload = renderCheckboxes;
+
+    function renderCheckboxes() {
         const checkboxDiv = document.getElementById("kids-checkboxes");
+        checkboxDiv.innerHTML = "";
         allKids.forEach(kid => {
             checkboxDiv.innerHTML += `
-                <div class="form-check m-2">
+                <div class="form-check m-2 border rounded px-3 py-1 bg-white shadow-sm">
                     <input class="form-check-input" type="checkbox" value="${kid}" id="chk-${kid}" checked>
-                    <label class="form-check-label fs-5" for="chk-${kid}">${kid}</label>
+                    <label class="form-check-label fs-5 ms-1" style="cursor:pointer;" for="chk-${kid}">${kid}</label>
                 </div>
             `;
         });
-    };
+    }
+
+    function addKid() {
+        const input = document.getElementById("new-kid-name");
+        const name = input.value.trim();
+        if(name === "") { Swal.fire('提示', '請輸入小朋友的名字！', 'warning'); return; }
+        if(allKids.includes(name)) { Swal.fire('提示', '這個名字已經在名單裡囉！', 'info'); return; }
+        allKids.push(name);
+        input.value = "";
+        renderCheckboxes();
+        Swal.fire({ title: '新增成功', text: `已加入 ${name}`, icon: 'success', timer: 1000, showConfirmButton: false });
+    }
 
     function showScreen(screenId) {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(screenId).classList.add('active');
     }
 
-    // --- 遊戲流程 ---
     function startGame() {
         const checkboxes = document.querySelectorAll('#kids-checkboxes input:checked');
         activeKids = Array.from(checkboxes).map(cb => cb.value);
+        if (activeKids.length === 0) { Swal.fire('錯誤', '請至少選擇一位小朋友', 'error'); return; }
+        activeKids.forEach(kid => scores[kid] = 0);
+        initChart();
+        drawNextKid();
+    }
+
+    function drawNextKid() {
+        const remaining = activeKids.filter(k => !playedKids.includes(k));
         
-        if (activeKids.length === 0) {
-            Swal.fire('錯誤', '請至少選擇一位小朋友', 'error');
+        if(remaining.length === 0) {
+            showFinalRanking();
             return;
         }
 
-        activeKids.forEach(kid => scores[kid] = 0);
-        renderKidSelection();
-        showScreen('screen-select-kid');
-        initChart();
-    }
+        // 修改 1：如果只剩下最後 1 個小朋友，直接開始，跳過輪盤動畫
+        if(remaining.length === 1) {
+            startTurn(remaining[0]);
+            return;
+        }
 
-    function renderKidSelection() {
-        const div = document.getElementById("remaining-kids");
-        div.innerHTML = "";
-        const remaining = activeKids.filter(k => !playedKids.includes(k));
-        
-        remaining.forEach(kid => {
-            div.innerHTML += `<button class="btn btn-outline-primary kid-btn" onclick="startTurn('${kid}')">${kid}</button>`;
+        let timerInterval;
+        Swal.fire({
+            title: '🎲 抽籤中...',
+            html: '下一位挑戰者是：<br><br><span id="roulette-name" class="fs-1 text-primary fw-bold"></span>',
+            timer: 2000,
+            timerProgressBar: true,
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+                const b = document.getElementById('roulette-name');
+                timerInterval = setInterval(() => {
+                    const randomName = remaining[Math.floor(Math.random() * remaining.length)];
+                    b.textContent = randomName;
+                }, 100);
+            },
+            willClose: () => { clearInterval(timerInterval); }
+        }).then(() => {
+            const selectedKid = remaining[Math.floor(Math.random() * remaining.length)];
+            startTurn(selectedKid);
         });
     }
 
@@ -217,7 +304,12 @@
         currentKid = kid;
         qIndex = 0;
         
-        // 隨機挑選5題
+        // 重置當前回合的統計資料
+        currentCorrectCount = 0;
+        currentIncorrectCount = 0;
+        document.getElementById("current-correct-count").innerText = currentCorrectCount;
+        document.getElementById("current-incorrect-count").innerText = currentIncorrectCount;
+        
         let shuffled = [...questionBank].sort(() => 0.5 - Math.random());
         currentQuestions = shuffled.slice(0, 5);
         
@@ -233,25 +325,32 @@
         
         const hintBox = document.getElementById("correct-action");
         if (q.ans) {
-            hintBox.innerHTML = `正確答案是【對】<br>👧👦 小朋友要：<span class="text-primary">嘴巴說「對」，但「搖頭(X)」</span>`;
+            hintBox.innerHTML = `答案：【對】<br><span class="text-primary fs-4">嘴巴說「對」，但請「搖頭(X)」</span>`;
         } else {
-            hintBox.innerHTML = `正確答案是【錯】<br>👧👦 小朋友要：<span class="text-primary">嘴巴說「錯」，但「點頭(O)」</span>`;
+            hintBox.innerHTML = `答案：【錯】<br><span class="text-primary fs-4">嘴巴說「錯」，但請「點頭(O)」</span>`;
         }
     }
 
     function answer(isCorrect) {
+        // 修改 2：即時更新做對/做錯的數量
         if (isCorrect) {
             scores[currentKid]++;
+            currentCorrectCount++;
+        } else {
+            currentIncorrectCount++;
         }
         
-        // 隨機鼓勵語
+        // 更新畫面上的數字
+        document.getElementById("current-correct-count").innerText = currentCorrectCount;
+        document.getElementById("current-incorrect-count").innerText = currentIncorrectCount;
+        
         const encourageMsg = encouragements[Math.floor(Math.random() * encouragements.length)];
         
         Swal.fire({
             title: isCorrect ? '答對了！🎉' : '答錯了！沒關係！',
             text: encourageMsg,
             icon: isCorrect ? 'success' : 'info',
-            timer: 2000,
+            timer: 1500, // 稍微縮短鼓勵視窗的時間，讓流程更順暢
             showConfirmButton: false
         }).then(() => {
             qIndex++;
@@ -265,12 +364,15 @@
 
     function endTurn() {
         playedKids.push(currentKid);
-        Swal.fire('完成挑戰！', `${currentKid} 獲得了 ${scores[currentKid]} 分！`, 'success').then(() => {
-            showDashboard(true);
+        Swal.fire({
+            title: '完成挑戰！',
+            text: `${currentKid} 總共獲得了 ${scores[currentKid]} 分！`,
+            icon: 'success'
+        }).then(() => {
+            showDashboard();
         });
     }
 
-    // --- 儀表板與圖表 ---
     function initChart() {
         const ctx = document.getElementById('scoreChart').getContext('2d');
         chartInstance = new Chart(ctx, {
@@ -282,13 +384,13 @@
                     data: activeKids.map(() => 0),
                     backgroundColor: 'rgba(54, 162, 235, 0.6)',
                     borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 1
+                    borderWidth: 1,
+                    borderRadius: 5
                 }]
             },
             options: {
-                scales: {
-                    y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } }
-                }
+                scales: { y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } } },
+                plugins: { legend: { display: false } }
             }
         });
     }
@@ -298,29 +400,29 @@
         chartInstance.update();
     }
 
-    function showDashboard(fromGame) {
+    function showDashboard() {
         updateChart();
         const actionsDiv = document.getElementById("dashboard-actions");
         
         if (playedKids.length < activeKids.length) {
-            renderKidSelection();
+            // 判斷是否只剩一位
+            const remainingCount = activeKids.length - playedKids.length;
+            const btnText = remainingCount === 1 ? '🎯 讓最後一位挑戰者上場' : '🎲 隨機抽出下一位挑戰者';
             actionsDiv.innerHTML = `
-                <button class="btn btn-primary btn-lg" onclick="showScreen('screen-select-kid')">請下一位挑戰者出場</button>
+                <button class="btn btn-primary btn-lg shadow px-5" onclick="drawNextKid()">${btnText}</button>
             `;
         } else {
             actionsDiv.innerHTML = `
-                <button class="btn btn-danger btn-lg" onclick="showFinalRanking()">查看最終排名 🏆</button>
+                <button class="btn btn-danger btn-lg shadow px-5" onclick="showFinalRanking()">查看最終排名 🏆</button>
             `;
         }
         showScreen('screen-dashboard');
     }
 
-    // --- 最終排名 ---
     function showFinalRanking() {
         const listDiv = document.getElementById("ranking-list");
         listDiv.innerHTML = "";
         
-        // 依分數排序
         let sortedKids = activeKids.slice().sort((a, b) => scores[b] - scores[a]);
         
         let rank = 1;
@@ -329,15 +431,17 @@
                 rank = index + 1;
             }
             let badge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🏅';
+            let bgClass = rank === 1 ? 'bg-warning text-dark' : 'bg-light';
             
             listDiv.innerHTML += `
-                <div class="list-group-item d-flex justify-content-between align-items-center fs-5">
-                    <span>${badge} 第 ${rank} 名：${kid}</span>
-                    <span class="badge bg-primary rounded-pill">${scores[kid]} 分</span>
+                <div class="list-group-item d-flex justify-content-between align-items-center fs-4 py-3 ${bgClass}">
+                    <span>${badge} 第 ${rank} 名：<strong>${kid}</strong></span>
+                    <span class="badge bg-primary rounded-pill shadow-sm">${scores[kid]} 分</span>
                 </div>
             `;
         });
         
+        // 進入排名畫面
         showScreen('screen-final');
     }
 </script>
